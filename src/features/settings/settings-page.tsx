@@ -1,12 +1,14 @@
 import { useLiveQuery } from "dexie-react-hooks"
 import { useState, useEffect } from "react"
-import { ExternalLink, Check, Eye, EyeOff, Sparkles } from "lucide-react"
+import { ExternalLink, Check, Eye, EyeOff, Sparkles, Cloud, CloudOff, LogOut, Loader2 } from "lucide-react"
 import { db, initializeSettings } from "@/db/database"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import type { AIProvider } from "@/types/database"
+import { signInWithGoogle, signOut, onAuthChange, type AuthUser } from "@/services/auth-service"
+import { uploadAllData, downloadAllData, startRealtimeSync, stopRealtimeSync } from "@/services/sync-service"
 
 const aiProviderOptions = [
   { value: "", label: "Not configured" },
@@ -28,8 +30,24 @@ export function SettingsPage() {
   const [aiModel, setAiModel] = useState("")
   const [aiSaved, setAiSaved] = useState(false)
 
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string | null>(null)
+
   useEffect(() => {
     initializeSettings()
+
+    // Listen for auth changes
+    const unsubscribe = onAuthChange((authUser) => {
+      setUser(authUser)
+      if (authUser) {
+        startRealtimeSync(authUser.uid)
+      } else {
+        stopRealtimeSync()
+      }
+    })
+
+    return () => unsubscribe()
   }, [])
 
   const settings = useLiveQuery(() => db.settings.get("user-settings"))
@@ -76,6 +94,50 @@ export function SettingsPage() {
     setTimeout(() => setAiSaved(false), 2000)
   }
 
+  const handleSignIn = async () => {
+    setIsSyncing(true)
+    setSyncStatus("Signing in...")
+    try {
+      const authUser = await signInWithGoogle()
+      setSyncStatus("Downloading cloud data...")
+      await downloadAllData(authUser.uid)
+      setSyncStatus("Uploading local data...")
+      await uploadAllData(authUser.uid)
+      startRealtimeSync(authUser.uid)
+      setSyncStatus("Sync complete!")
+      setTimeout(() => setSyncStatus(null), 2000)
+    } catch (error) {
+      setSyncStatus(`Error: ${error instanceof Error ? error.message : "Failed to sign in"}`)
+      setTimeout(() => setSyncStatus(null), 3000)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    stopRealtimeSync()
+    await signOut()
+    setUser(null)
+    setSyncStatus(null)
+  }
+
+  const handleForceSync = async () => {
+    if (!user) return
+    setIsSyncing(true)
+    setSyncStatus("Syncing...")
+    try {
+      await downloadAllData(user.uid)
+      await uploadAllData(user.uid)
+      setSyncStatus("Sync complete!")
+      setTimeout(() => setSyncStatus(null), 2000)
+    } catch (error) {
+      setSyncStatus(`Error: ${error instanceof Error ? error.message : "Sync failed"}`)
+      setTimeout(() => setSyncStatus(null), 3000)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   if (!settings) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -90,6 +152,98 @@ export function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-muted-foreground">Customize your experience</p>
       </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            {user ? <Cloud className="w-5 h-5 text-primary" /> : <CloudOff className="w-5 h-5" />}
+            Cloud Sync
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {user ? (
+            <>
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                {user.photoURL && (
+                  <img
+                    src={user.photoURL}
+                    alt=""
+                    className="w-10 h-10 rounded-full"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{user.displayName}</p>
+                  <p className="text-sm text-muted-foreground truncate">{user.email}</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-primary/10 text-primary rounded-lg text-sm flex items-center gap-2">
+                <Cloud className="w-4 h-4 flex-shrink-0" />
+                Sync enabled. Your data syncs automatically across devices.
+              </div>
+
+              {syncStatus && (
+                <div className="p-3 bg-muted rounded-lg text-sm flex items-center gap-2">
+                  {isSyncing && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {syncStatus}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleForceSync}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Cloud className="w-4 h-4 mr-2" />
+                  )}
+                  Sync Now
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleSignOut}
+                  disabled={isSyncing}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Sign in with Google to sync your data across all your devices.
+                Your nutrition logs, meal plans, and inventory will be available
+                everywhere.
+              </p>
+
+              {syncStatus && (
+                <div className="p-3 bg-muted rounded-lg text-sm flex items-center gap-2">
+                  {isSyncing && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {syncStatus}
+                </div>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={handleSignIn}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Cloud className="w-4 h-4 mr-2" />
+                )}
+                Sign in with Google
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -353,8 +507,9 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            All your data is stored locally on this device. Nothing is sent to
-            any server except USDA food searches (if enabled).
+            {user
+              ? "Your data is stored locally and synced to Google Cloud. API keys are stored locally only and not synced."
+              : "All your data is stored locally on this device. Sign in with Google to sync across devices."}
           </p>
         </CardContent>
       </Card>

@@ -13,12 +13,13 @@ npm run deploy   # Build and deploy to GitHub Pages
 
 ## Architecture Overview
 
-NutriTrack is a local-first nutrition tracking PWA. All data is stored in the browser's IndexedDB via Dexie.js - no backend server.
+NutriTrack is a local-first nutrition tracking PWA with optional cloud sync. Primary data storage is browser IndexedDB via Dexie.js, with Firebase for authentication and cross-device sync.
 
 ### Tech Stack
 - **React 19** + TypeScript + Vite
 - **Tailwind CSS v4** with `@theme` block for CSS variables (see `src/index.css`)
 - **Dexie.js** for IndexedDB storage with `dexie-react-hooks` for reactive queries
+- **Firebase** - Authentication (Google sign-in) and Firestore for cloud sync
 - **React Router** with HashRouter (for GitHub Pages compatibility)
 
 ### Data Flow
@@ -38,6 +39,18 @@ NutriTrack is a local-first nutrition tracking PWA. All data is stored in the br
 - `inventory-service.ts` - Pantry tracking, expiration
 - `food-service.ts` - Food CRUD, search
 - `ai-suggestion-service.ts` - Multi-provider AI integration (Gemini, OpenAI, Anthropic, Ollama)
+- `auth-service.ts` - Firebase Google authentication
+- `sync-service.ts` - Bidirectional Firestore sync
+
+### Cloud Sync
+
+Optional feature configured in Settings. When signed in:
+- Data syncs to Firestore under `users/{userId}/{collection}/{docId}`
+- Real-time sync via Firestore listeners + Dexie hooks
+- API keys (USDA, AI) are NOT synced - they stay local to each device
+- Conflict resolution: remote wins if `updatedAt` is newer
+
+Firebase config is in `src/lib/firebase.ts` (project: nutritrack-10c54).
 
 ### External APIs
 - **USDA FoodData Central** - Food nutrition lookup (requires free API key)

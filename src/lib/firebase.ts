@@ -3,12 +3,12 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth"
 import { getFirestore } from "firebase/firestore"
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCFffbkALNuHkNLAyL11RZEeGTbhaQpYaw",
-  authDomain: "nutritrack-10c54.firebaseapp.com",
-  projectId: "nutritrack-10c54",
-  storageBucket: "nutritrack-10c54.firebasestorage.app",
-  messagingSenderId: "100416850946",
-  appId: "1:100416850946:web:3601da7fd0be32fc146b1b"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 }
 
 const app = initializeApp(firebaseConfig)
